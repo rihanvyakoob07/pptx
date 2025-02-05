@@ -30,21 +30,39 @@ service = RFXService()
 
 
 
-@router.post("/chatbot")
-async def generate_chatbot_response(
-    question: str = Body(...),
-    pdf_file: UploadFile = File(None)
-):
+@router.post("/multiple-questions", operation_id="generate_multiple_questions")
+async def generate_multiple_questions(
+    body: MultipleQuestions,
+    limit: Optional[int] = 3,
+    fallback: Optional[bool] = False,
+) -> RFxSlideDeckResponseDTO:
     try:
-        if pdf_file:
-            temp_filename = f"temp_{uuid.uuid4()}.pdf"
-            with open(temp_filename, "wb") as f:
-                f.write(pdf_file.file.read())
-            response = chat_with_document(question, pdf_path=temp_filename)
-            os.remove(temp_filename)
-        else:
-            response = chat_with_document(question)
-        return JSONResponse(status_code=200, content=response)
+        # Sanitize questions
+        questions_copy = [sanitize_input(q) for q in body.questions]
+        
+        # Configure options
+        options = Options(
+            length=sanitize_input(body.length) if body.length else service.default_options_config,
+            tone=sanitize_input(body.tone) if body.tone else service.default_options_config
+        )
+        
+        # Generate IDs
+        conversation_id = uuid4()
+        mock_user_id = str(uuid4())  # Temporary user ID for testing
+        
+        # Get response from service
+        response = await service.generate_multiple_response(
+            conversation_id=conversation_id,
+            user_id=mock_user_id,
+            questions=questions_copy,
+            options=options,
+            limit=limit,
+            fallback=fallback
+        )
+        
+        return response
+        
     except Exception as e:
-        logger.exception(f"Error in chatbot conversation: {e}")
+        logger.exception(f"Error in multiple questions generation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
